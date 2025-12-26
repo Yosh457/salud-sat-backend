@@ -3,6 +3,7 @@ const cors = require('cors');
 const config = require('./config/config');
 const errorHandler = require('./middlewares/errorMiddleware');
 const authRoutes = require('./routes/authRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.get('/', (req, res) => {
 
 // Registro de rutas
 app.use('/api/auth', authRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 // Manejo de rutas inexistentes (404)
 app.use((req, res, next) => {
