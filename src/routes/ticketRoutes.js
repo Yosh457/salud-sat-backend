@@ -25,4 +25,7 @@ router.post('/:id/evidencia', upload.single('evidencia'), ticketController.subir
 // GET /api/tickets/:id/evidencia -> Ver lista de archivos
 router.get('/:id/evidencia', ticketController.listarEvidencias);
 
+// GET /api/tickets/:id/historial -> Ver bitácora del ticket
+router.get('/:id/historial', ticketController.verHistorial);
+
 module.exports = router;

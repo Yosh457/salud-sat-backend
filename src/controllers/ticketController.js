@@ -1,6 +1,7 @@
 const { getIo } = require('../services/socketService');
 const Ticket = require('../models/ticketModel');
 const TicketEvidence = require('../models/ticketEvidenceModel');
+const TicketHistory = require('../models/ticketHistoryModel');
 
 const crearTicket = async (req, res, next) => {
     try {
@@ -13,6 +14,14 @@ const crearTicket = async (req, res, next) => {
             descripcion, 
             prioridad, 
             categoria
+        });
+
+        // Registrar historial
+        await TicketHistory.create({
+            ticket_id: nuevoId,
+            usuario_id: req.user.id,
+            accion: 'CREADO',
+            detalle: `Ticket creado con título: ${titulo}`
         });
         // Notificar en tiempo real a técnicos/admins conectados
         // 'nuevo_ticket' es el nombre del evento que escucharán en el frontend
@@ -108,6 +117,20 @@ const actualizarTicket = async (req, res, next) => {
         // Llamamos al modelo (que crearemos abajo)
         await Ticket.update(id, cambios);
 
+        // Registrar historial de cambios
+        let detalles = [];
+        if (estado) detalles.push(`Estado cambiado a: ${estado}`);
+        if (tecnico_id) detalles.push(`Asignado al técnico ID: ${tecnico_id}`);
+
+        if (detalles.length > 0) {
+            await TicketHistory.create({
+                ticket_id: id,
+                usuario_id: req.user.id,
+                accion: 'ACTUALIZADO',
+                detalle: detalles.join('. ')
+            });
+        }
+
         res.json({ 
             status: 'success', 
             message: 'Ticket actualizado correctamente',
@@ -138,6 +161,14 @@ const subirEvidencia = async (req, res, next) => {
             tipo_mime: file.mimetype
         });
 
+        // Registrar en el historial del ticket
+        await TicketHistory.create({
+            ticket_id: id,
+            usuario_id: req.user.id,
+            accion: 'EVIDENCIA',
+            detalle: `Se adjuntó archivo: ${file.originalname}`
+        });
+
         res.status(201).json({
             status: 'success',
             message: 'Evidencia guardada exitosamente',
@@ -163,4 +194,14 @@ const listarEvidencias = async (req, res, next) => {
     }
 };
 
-module.exports = { crearTicket, listarTickets, obtenerTicket, actualizarTicket, subirEvidencia, listarEvidencias };
+const verHistorial = async (req, res, next) => {
+    try {
+        const { id } = req.params; // ID del ticket
+        const historial = await TicketHistory.findByTicketId(id);
+        res.json({ status: 'success', data: historial });
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { crearTicket, listarTickets, obtenerTicket, actualizarTicket, subirEvidencia, listarEvidencias, verHistorial };
