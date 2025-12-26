@@ -4,6 +4,7 @@ const config = require('./config/config');
 const errorHandler = require('./middlewares/errorMiddleware');
 const authRoutes = require('./routes/authRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
+const statsRoutes = require('./routes/statsRoutes');
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.get('/', (req, res) => {
 // Registro de rutas
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Manejo de rutas inexistentes (404)
 app.use((req, res, next) => {
