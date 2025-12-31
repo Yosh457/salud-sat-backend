@@ -13,6 +13,18 @@ const User = {
         return rows[0];
     },
 
+    // Listar solo técnicos y admins (para asignación)
+    findTechnicians: async () => {
+        const sql = `
+            SELECT id, nombre_completo, rol 
+            FROM usuarios 
+            WHERE rol IN ('tecnico', 'admin') 
+            AND activo = 1
+        `;
+        const [rows] = await db.query(sql);
+        return rows;
+    },
+
     // Crear usuario (útil para futuros registros)
     create: async (userData) => {
         const { rut, nombre_completo, email, password_hash, rol } = userData;

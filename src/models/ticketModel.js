@@ -39,7 +39,15 @@ const Ticket = {
 
     // Buscar un ticket por ID (Para ver detalle)
     findById: async (id) => {
-        const sql = `SELECT * FROM tickets WHERE id = ?`;
+        const sql = `
+            SELECT t.*, 
+                    u.nombre_completo as autor, 
+                    tec.nombre_completo as tecnico
+            FROM tickets t
+            JOIN usuarios u ON t.usuario_id = u.id
+            LEFT JOIN usuarios tec ON t.tecnico_id = tec.id
+            WHERE t.id = ?
+        `;
         const [rows] = await db.query(sql, [id]);
         return rows[0];
     },
