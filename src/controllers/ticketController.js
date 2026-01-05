@@ -6,13 +6,13 @@ const TicketHistory = require('../models/ticketHistoryModel');
 const crearTicket = async (req, res, next) => {
     try {
         const { titulo, descripcion, prioridad, categoria } = req.body;
-        
+
         // El ID del usuario viene del Token (req.user.id) gracias al authMiddleware
         const nuevoId = await Ticket.create({
-            usuario_id: req.user.id, 
-            titulo, 
-            descripcion, 
-            prioridad, 
+            usuario_id: req.user.id,
+            titulo,
+            descripcion,
+            prioridad,
             categoria
         });
 
@@ -25,17 +25,17 @@ const crearTicket = async (req, res, next) => {
         });
         // Notificar en tiempo real a técnicos/admins conectados
         // 'nuevo_ticket' es el nombre del evento que escucharán en el frontend
-        getIo().emit('nuevo_ticket', { 
-            id: nuevoId, 
-            titulo, 
+        getIo().emit('nuevo_ticket', {
+            id: nuevoId,
+            titulo,
             prioridad,
             mensaje: '¡Nuevo ticket ingresado!'
         });
 
-        res.status(201).json({ 
-            status: 'success', 
+        res.status(201).json({
+            status: 'success',
             message: 'Ticket creado exitosamente',
-            ticketId: nuevoId 
+            ticketId: nuevoId
         });
     } catch (error) {
         next(error);
@@ -88,7 +88,7 @@ const actualizarTicket = async (req, res, next) => {
         const { id } = req.params;
         const { estado, tecnico_id, prioridad, categoria } = req.body;
 
-        // 1. Verificar que el ticket existe
+        // 1. Obtener ticket actual de la BD
         const ticket = await Ticket.findById(id);
         if (!ticket) {
             const error = new Error('Ticket no encontrado');
@@ -96,31 +96,42 @@ const actualizarTicket = async (req, res, next) => {
             throw error;
         }
 
-        // 2. Lógica de Negocio (Solo Admin y Tecnicos pueden editar gestión)
         if (req.user.rol === 'funcionario') {
             const error = new Error('No tienes permisos para gestionar tickets');
             error.statusCode = 403;
             throw error;
         }
 
-        // 3. Preparar datos para actualizar (Modelo dinámico simple)
-        // Nota: Idealmente esto iría en el Model, pero lo haremos aquí para agilizar
-        // Vamos a necesitar agregar un método 'update' en ticketModel.js
-        
+        // 2. Preparar objeto de cambios (LÓGICA BLINDADA) 🛡️
         const cambios = {
-            estado: estado || ticket.estado,
-            tecnico_id: tecnico_id || ticket.tecnico_id, // Asignar técnico
+            // Usamos el operador coalescente (??) o un OR lógico estricto
+            // Si el valor nuevo es undefined, usamos el ticket.valor actual.
             prioridad: prioridad || ticket.prioridad,
-            categoria: categoria || ticket.categoria
+            categoria: categoria || ticket.categoria,
+            tecnico_id: tecnico_id !== undefined ? tecnico_id : ticket.tecnico_id,
+            estado: estado || ticket.estado
         };
 
-        // Llamamos al modelo (que crearemos abajo)
+        // 3. AUTOMATIZACIÓN DE ESTADOS 🤖
+        // Si se asigna un técnico (y antes no tenía o cambió) y el estado sigue "pendiente"...
+        // ¡Forzamos "en_proceso"!
+        if (tecnico_id && parseInt(tecnico_id) > 0 && ticket.estado === 'pendiente') {
+            cambios.estado = 'en_proceso';
+        }
+
+        // Si el técnico marca "resuelto", respetamos ese estado.
+        if (estado === 'resuelto') {
+            cambios.estado = 'resuelto';
+        }
+
+        // 4. Guardar en BD
         await Ticket.update(id, cambios);
 
-        // Registrar historial de cambios
+        // 5. Historial (Solo registramos lo que realmente cambió)
         let detalles = [];
-        if (estado) detalles.push(`Estado cambiado a: ${estado}`);
-        if (tecnico_id) detalles.push(`Asignado al técnico ID: ${tecnico_id}`);
+        if (cambios.estado !== ticket.estado) detalles.push(`Estado cambia a: ${cambios.estado}`);
+        if (cambios.tecnico_id !== ticket.tecnico_id) detalles.push(`Técnico asignado ID: ${cambios.tecnico_id}`);
+        if (cambios.prioridad !== ticket.prioridad) detalles.push(`Prioridad cambia a: ${cambios.prioridad}`);
 
         if (detalles.length > 0) {
             await TicketHistory.create({
@@ -131,8 +142,8 @@ const actualizarTicket = async (req, res, next) => {
             });
         }
 
-        res.json({ 
-            status: 'success', 
+        res.json({
+            status: 'success',
             message: 'Ticket actualizado correctamente',
             data: cambios
         });

@@ -8,7 +8,8 @@ const pool = mysql.createPool({
     database: config.DB.NAME,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    charset: 'utf8mb4'
 });
 
 // Verificación inicial de conexión (Solo para log de consola al arrancar)
