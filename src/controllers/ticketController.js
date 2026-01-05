@@ -127,17 +127,29 @@ const actualizarTicket = async (req, res, next) => {
         // 4. Guardar en BD
         await Ticket.update(id, cambios);
 
-        // 5. Historial (Solo registramos lo que realmente cambió)
+        // 5. Lógica de etiquetas para el historial
+        let accionHistorial = 'ACTUALIZADO'; // Valor por defecto
+
+        if (cambios.estado === 'resuelto' && ticket.estado !== 'resuelto') {
+            accionHistorial = 'RESUELTO';
+        } else if (cambios.estado === 'cerrado' && ticket.estado !== 'cerrado') {
+            accionHistorial = 'CERRADO';
+        } else if (cambios.tecnico_id && cambios.tecnico_id !== ticket.tecnico_id) {
+            accionHistorial = 'ASIGNADO';
+        }
+
+        // 6. Generar el detalle de texto
         let detalles = [];
         if (cambios.estado !== ticket.estado) detalles.push(`Estado cambia a: ${cambios.estado}`);
         if (cambios.tecnico_id !== ticket.tecnico_id) detalles.push(`Técnico asignado ID: ${cambios.tecnico_id}`);
         if (cambios.prioridad !== ticket.prioridad) detalles.push(`Prioridad cambia a: ${cambios.prioridad}`);
 
+        // Solo guardamos en historial si hubo cambios reales
         if (detalles.length > 0) {
             await TicketHistory.create({
                 ticket_id: id,
                 usuario_id: req.user.id,
-                accion: 'ACTUALIZADO',
+                accion: accionHistorial, // <--- Usamos la etiqueta dinámica
                 detalle: detalles.join('. ')
             });
         }
