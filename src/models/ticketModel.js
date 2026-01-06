@@ -38,11 +38,14 @@ const Ticket = {
     },
 
     // Buscar un ticket por ID (Para ver detalle)
+    // Buscar un ticket por ID (Con emails para notificaciones)
     findById: async (id) => {
         const sql = `
             SELECT t.*, 
                     u.nombre_completo as autor, 
-                    tec.nombre_completo as tecnico
+                    u.email as autor_email,  
+                    tec.nombre_completo as tecnico,
+                    tec.email as tecnico_email 
             FROM tickets t
             JOIN usuarios u ON t.usuario_id = u.id
             LEFT JOIN usuarios tec ON t.tecnico_id = tec.id

@@ -2,6 +2,8 @@ const { getIo } = require('../services/socketService');
 const Ticket = require('../models/ticketModel');
 const TicketEvidence = require('../models/ticketEvidenceModel');
 const TicketHistory = require('../models/ticketHistoryModel');
+const User = require('../models/userModel');
+const emailService = require('../services/emailService'); // Importar servicio de email
 
 const crearTicket = async (req, res, next) => {
     try {
@@ -88,37 +90,27 @@ const actualizarTicket = async (req, res, next) => {
         const { id } = req.params;
         const { estado, tecnico_id, prioridad, categoria } = req.body;
 
-        // 1. Obtener ticket actual de la BD
-        const ticket = await Ticket.findById(id);
-        if (!ticket) {
+        // 1. Obtener ticket actual
+        const ticketActual = await Ticket.findById(id);
+        if (!ticketActual) {
             const error = new Error('Ticket no encontrado');
             error.statusCode = 404;
             throw error;
         }
 
-        if (req.user.rol === 'funcionario') {
-            const error = new Error('No tienes permisos para gestionar tickets');
-            error.statusCode = 403;
-            throw error;
-        }
-
-        // 2. Preparar objeto de cambios (LÓGICA BLINDADA) 🛡️
+        // 2. Preparar cambios
         const cambios = {
-            // Usamos el operador coalescente (??) o un OR lógico estricto
-            // Si el valor nuevo es undefined, usamos el ticket.valor actual.
-            prioridad: prioridad || ticket.prioridad,
-            categoria: categoria || ticket.categoria,
-            tecnico_id: tecnico_id !== undefined ? tecnico_id : ticket.tecnico_id,
-            estado: estado || ticket.estado
+            prioridad: prioridad || ticketActual.prioridad,
+            categoria: categoria || ticketActual.categoria,
+            tecnico_id: tecnico_id !== undefined ? tecnico_id : ticketActual.tecnico_id,
+            estado: estado || ticketActual.estado
         };
 
-        // 3. AUTOMATIZACIÓN DE ESTADOS 🤖
-        // Si se asigna un técnico (y antes no tenía o cambió) y el estado sigue "pendiente"...
-        // ¡Forzamos "en_proceso"!
-        if (tecnico_id && parseInt(tecnico_id) > 0 && ticket.estado === 'pendiente') {
+        // 3. Automatización de Estados
+        // Importante: comparar con != null para atrapar null y undefined
+        if (tecnico_id && tecnico_id != ticketActual.tecnico_id && ticketActual.estado === 'pendiente') {
             cambios.estado = 'en_proceso';
         }
-
         // Si el técnico marca "resuelto", respetamos ese estado.
         if (estado === 'resuelto') {
             cambios.estado = 'resuelto';
@@ -127,22 +119,63 @@ const actualizarTicket = async (req, res, next) => {
         // 4. Guardar en BD
         await Ticket.update(id, cambios);
 
-        // 5. Lógica de etiquetas para el historial
-        let accionHistorial = 'ACTUALIZADO'; // Valor por defecto
+        // =================================================================
+        // 🛡️ ZONA DE NOTIFICACIONES (A PRUEBA DE FALLOS)
+        // Envolvemos esto en try/catch para que NUNCA rompa la respuesta http
+        // =================================================================
+        try {
+            // CASO A: Se asignó un técnico nuevo
+            if (cambios.tecnico_id && cambios.tecnico_id != ticketActual.tecnico_id) {
+                // Buscamos datos del técnico nuevo
+                const tecnicoNuevo = await User.findById(cambios.tecnico_id);
 
-        if (cambios.estado === 'resuelto' && ticket.estado !== 'resuelto') {
-            accionHistorial = 'RESUELTO';
-        } else if (cambios.estado === 'cerrado' && ticket.estado !== 'cerrado') {
-            accionHistorial = 'CERRADO';
-        } else if (cambios.tecnico_id && cambios.tecnico_id !== ticket.tecnico_id) {
-            accionHistorial = 'ASIGNADO';
+                // Solo enviamos si el técnico existe y tiene email
+                if (tecnicoNuevo && tecnicoNuevo.email) {
+                    console.log(`📧 Intentando notificar a técnico: ${tecnicoNuevo.email}`);
+                    await emailService.notificarAsignacion(
+                        tecnicoNuevo.email,
+                        tecnicoNuevo.nombre_completo,
+                        id,
+                        ticketActual.titulo
+                    );
+                } else {
+                    console.warn(`⚠️ No se pudo notificar: Técnico ID ${cambios.tecnico_id} no tiene email o no existe.`);
+                }
+            }
+
+            // CASO B: Se resolvió el ticket
+            if (cambios.estado === 'resuelto' && ticketActual.estado !== 'resuelto') {
+                if (ticketActual.autor_email) {
+                    console.log(`📧 Intentando notificar a funcionario: ${ticketActual.autor_email}`);
+                    await emailService.notificarResolucion(
+                        ticketActual.autor_email,
+                        ticketActual.autor,
+                        id,
+                        ticketActual.titulo
+                    );
+                } else {
+                    console.warn(`⚠️ No se pudo notificar resolución: El autor del ticket no tiene email registrado.`);
+                }
+            }
+        } catch (emailError) {
+            // Si algo falla aquí, SOLO lo logueamos, pero NO detenemos el request
+            console.error("❌ ERROR EN ENVÍO DE CORREOS (No crítico):", emailError.message);
         }
+        // =================================================================
+        // 🛡️ FIN ZONA DE NOTIFICACIONES
+        // =================================================================
 
-        // 6. Generar el detalle de texto
+        // 6. Historial
+        let accionHistorial = 'ACTUALIZADO';
+        if (cambios.estado === 'resuelto' && ticketActual.estado !== 'resuelto') accionHistorial = 'RESUELTO';
+        else if (cambios.estado === 'cerrado' && ticketActual.estado !== 'cerrado') accionHistorial = 'CERRADO';
+        else if (cambios.tecnico_id && cambios.tecnico_id != ticketActual.tecnico_id) accionHistorial = 'ASIGNADO';
+
+        // 7. Generar el detalle de texto
         let detalles = [];
-        if (cambios.estado !== ticket.estado) detalles.push(`Estado cambia a: ${cambios.estado}`);
-        if (cambios.tecnico_id !== ticket.tecnico_id) detalles.push(`Técnico asignado ID: ${cambios.tecnico_id}`);
-        if (cambios.prioridad !== ticket.prioridad) detalles.push(`Prioridad cambia a: ${cambios.prioridad}`);
+        if (cambios.estado !== ticketActual.estado) detalles.push(`Estado cambia a: ${cambios.estado}`);
+        if (cambios.tecnico_id != ticketActual.tecnico_id) detalles.push(`Técnico asignado ID: ${cambios.tecnico_id}`);
+        if (cambios.prioridad !== ticketActual.prioridad) detalles.push(`Prioridad cambia a: ${cambios.prioridad}`);
 
         // Solo guardamos en historial si hubo cambios reales
         if (detalles.length > 0) {
