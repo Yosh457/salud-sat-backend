@@ -12,7 +12,7 @@ const Stats = {
         return rows;
     },
 
-    // Contar tickets por prioridad (Solo los pendientes/en proceso)
+    // Contar tickets por prioridad
     getPendingByPriority: async () => {
         const sql = `
             SELECT prioridad, COUNT(*) as total 
@@ -24,14 +24,17 @@ const Stats = {
         return rows;
     },
 
-    // Ranking de técnicos (Quién ha resuelto más)
+    // Ranking de técnicos (JOIN GLOBAL para el nombre)
     getTechnicianRanking: async () => {
         const sql = `
-            SELECT u.nombre_completo, COUNT(t.id) as tickets_resueltos
+            SELECT 
+                g.nombre_completo, 
+                COUNT(t.id) as tickets_resueltos
             FROM tickets t
             JOIN usuarios u ON t.tecnico_id = u.id
+            JOIN mahosalu_usuarios_global.usuarios_global g ON u.usuario_global_id = g.id
             WHERE t.estado IN ('resuelto', 'cerrado')
-            GROUP BY t.tecnico_id
+            GROUP BY t.tecnico_id, g.nombre_completo
             ORDER BY tickets_resueltos DESC
             LIMIT 5
         `;

@@ -1,7 +1,7 @@
 const db = require('../config/db');
 
 const TicketHistory = {
-    // Crear un registro en el historial
+    // Crear un registro (Sin cambios)
     create: async (data) => {
         const { ticket_id, usuario_id, accion, detalle } = data;
         await db.query(
@@ -10,12 +10,15 @@ const TicketHistory = {
         );
     },
 
-    // Obtener el historial de un ticket
+    // Obtener historial (JOIN GLOBAL)
     findByTicketId: async (ticket_id) => {
         const sql = `
-            SELECT th.*, u.nombre_completo as usuario
+            SELECT 
+                th.*, 
+                g.nombre_completo as usuario
             FROM ticket_historial th
             JOIN usuarios u ON th.usuario_id = u.id
+            JOIN mahosalu_usuarios_global.usuarios_global g ON u.usuario_global_id = g.id
             WHERE th.ticket_id = ?
             ORDER BY th.fecha DESC
         `;
