@@ -67,7 +67,8 @@ const login = async (req, res, next) => {
                 id: userLocal.id,           // ID Local
                 rol: userLocal.rol,         // Rol Local
                 nombre: identity.nombre,    // Dato visual del Portal
-                rut: identity.rut           // Dato visual del Portal
+                rut: identity.rut,           // Dato visual del Portal
+                email: identity.email       // 👈 MODIFICACIÓN 1: Añadimos el email al Token para usarlo seguro en el proxy
             },
             config.JWT_SECRET,
             { expiresIn: '8h' }
@@ -79,7 +80,8 @@ const login = async (req, res, next) => {
             user: {
                 nombre: identity.nombre,
                 email: identity.email,
-                rol: userLocal.rol
+                rol: userLocal.rol,
+                cambio_clave_requerido: identity.cambio_clave_requerido // 👈 MODIFICACIÓN 2: Pasamos la bandera al Frontend de React
             }
         });
 
@@ -89,4 +91,31 @@ const login = async (req, res, next) => {
     }
 };
 
-module.exports = { login };
+// 🛡️ MODIFICACIÓN 3: NUEVA FUNCIÓN PROXY PARA FORZAR EL CAMBIO DE CLAVE
+const cambiarClave = async (req, res, next) => {
+    try {
+        const { new_password } = req.body;
+        
+        // Extraemos el email del token validado por el middleware (es 100% seguro y no se puede manipular)
+        const email = req.user.email; 
+
+        console.log(`📡 Solicitando cambio de clave al Portal TICs para: ${email}`);
+
+        // Enviamos la petición al Portal TICs para que él haga el cambio real en la BD Global
+        const portalResp = await axios.post(
+            `${config.PORTAL_URL}/api/auth/sso-change-password`,
+            { email, new_password },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+
+        res.json(portalResp.data);
+    } catch (error) {
+        if (error.response) {
+            return res.status(error.response.status).json({ message: error.response.data.message });
+        }
+        res.status(500).json({ message: 'Error de comunicación con el Portal de Identidad' });
+    }
+};
+
+// 👈 MODIFICACIÓN 4: Exportamos ambas funciones
+module.exports = { login, cambiarClave };
